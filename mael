@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# bail - an email client written in bash, and a bit of python
+# mael - an email client written in bash, and a bit of python
 
 # We check for INBOX, SENT and DRAFTS vars.
 # Subject to change.
 load_config() {
-    if [[ -f ~/.bailrc ]]; then
-        # run with 'shellcheck -x bail'
-        # shellcheck source=/home/icy/.bailrc
-        source ~/.bailrc
+    if [[ -f ~/.maelrc ]]; then
+        # run with 'shellcheck -x mael'
+        # shellcheck source=/home/icy/.maelrc
+        source ~/.maelrc
     else
-        printf "error: '~/.bailrc' not found"
+        printf "error: '~/.maelrc' not found"
         exit 0
     fi
 }
@@ -64,7 +64,7 @@ check_new() {
 # 'mktemp' doesn't allow custom extensions, so
 # we make it ourselves.
 mktemp_email() {
-    tmp="$(mktemp -t bail.XXXXXX)"
+    tmp="$(mktemp -t mael.XXXXXX)"
     mv "$tmp" "$tmp.eml"
     printf '%s' "$tmp.eml"
 }
@@ -77,15 +77,15 @@ mktemp_email() {
 # and seen, mark the sent message as seen. 
 # Finally, sync the mailbox.
 reply() {
-    msg="$(bail-parser -r "$1")"
-    to="$(bail-parser --from "$1")"
+    msg="$(mael-parser -r "$1")"
+    to="$(mael-parser --from "$1")"
     tmp="$(mktemp_email)"
     printf '%s' "$msg" > "$tmp"
     $EDITOR "$tmp"
     printf '%s' "$(< "$tmp")" | msmtp "$to"
     printf '%s\n' "sent reply to $to"
     printf '%s\n' "copying to $SENT"
-    sent="$(bail-parser -c "$tmp" "$SENT")"
+    sent="$(mael-parser -c "$tmp" "$SENT")"
     mark_seen "$1"
     mark_replied "$1"S
     mark_seen "$SENT/new/$sent"
@@ -150,9 +150,13 @@ mark_replied() {
 # TODO: We're hardcoding 'less' here. Probably use a config
 # option for this?
 print_mail() {
-    content="$(bail-parser "$1")"
+    content="$(mael-parser "$1")"
     printf '%s' "$content" | less
     printf '\e[2J\e[H'
+}
+
+render_prompt() {
+    printf ''
 }
 
 main() {
