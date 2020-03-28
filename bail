@@ -2,9 +2,18 @@
 #
 # bail - an email client written in bash, and a bit of python
 
-INBOX=~/mail/inbox
-SENT=~/mail/sent
-BAIL_EDITOR="vim"
+# We check for INBOX, SENT and DRAFTS vars.
+# Subject to change.
+load_config() {
+    if [[ -f ~/.bailrc ]]; then
+        # run with 'shellcheck -x bail'
+        # shellcheck source=/home/icy/.bailrc
+        source ~/.bailrc
+    else
+        printf "error: '~/.bailrc' not found"
+        exit 0
+    fi
+}
 
 # Sync all mailboxes.
 sync() {
@@ -72,10 +81,10 @@ reply() {
     to="$(bail-parser --from "$1")"
     tmp="$(mktemp_email)"
     printf '%s' "$msg" > "$tmp"
-    $BAIL_EDITOR "$tmp"
+    $EDITOR "$tmp"
     printf '%s' "$(< "$tmp")" | msmtp "$to"
-    printf '%s\n' "sent reply to "$to""
-    printf '%s\n' "copying to "$SENT""
+    printf '%s\n' "sent reply to $to"
+    printf '%s\n' "copying to $SENT"
     sent="$(bail-parser -c "$tmp" "$SENT")"
     mark_seen "$1"
     mark_replied "$1"S
@@ -147,6 +156,7 @@ print_mail() {
 }
 
 main() {
+    load_config
     sync
     check_new
 }
