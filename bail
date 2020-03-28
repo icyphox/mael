@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+#
+# bail - an email client written in bash, and a bit of python
+
+INBOX=~/mail/inbox
+SENT=~/mail/sent
+BAIL_EDITOR="vim"
+
+# Sync all mailboxes.
+sync() {
+    printf '%s\n' "syncing mail..."
+    mbsync -qa
+}
+
+# All new email go into the 'new' dir. We populate
+# the 'new' array with all new email. This array should
+# be empty if there are none.
+# The user is then prompted to reach each email, and has
+# the option to reply to each one -- handed off to 'reply()'.
+# On reading, each email is marked as 'seen'.
+check_new() {
+    shopt -s nullglob
+    new=("$INBOX/new/"*) 
+    shopt -u nullglob
+    count="${#new[@]}"
+    if [[ "$count" -eq 0 ]]; then
+        printf '%s\n' "no new mail"
+    else
+        printf '%s\n' "you have $count new mail"
+        printf 'would you like to read them? [y/n]'
+        read -rsn1 input
+        case "$input" in
+            "y")
+                for m in "${new[@]}"; do
+                    print_mail "$m"
+                    ((count--))
+                    printf '%s\n' "press 'r' to reply, anything else to continue"
+                    read -rsn1 inp
+                    if [[ "$inp" == "r"  ]]; then
+                        reply "$m"
+                    else
+                        mark_seen "$m"
+                    fi
+                    [[ "$count" -eq 0 ]] && break
+                    printf '%s\n' "there are $count new mail remaining"
+                done
+                ;;
+            *)
+                ;;
+        esac
+    fi
+}
+
+
+# 'mktemp' doesn't allow custom extensions, so
+# we make it ourselves.
+mktemp_email() {
+    tmp="$(mktemp -t bail.XXXXXX)"
+    mv "$tmp" "$tmp.eml"
+    printf '%s' "$tmp.eml"
+}
+
+# We send the message for parsing, toss the quoted
+# form into the tempfile. Launch the editor on the 
+# file -- on close, we send the message. 
+# Another call to the parser to copy the tmp
+# message to SENT. Mark the initial message as replied
+# and seen, mark the sent message as seen. 
+# Finally, sync the mailbox.
+reply() {
+    msg="$(bin/parser -r "$1")"
+    to="$(bin/parser --from "$1")"
+    tmp="$(mktemp_email)"
+    printf '%s' "$msg" > "$tmp"
+    $BAIL_EDITOR "$tmp"
+    printf '%s' "$(< "$tmp")" | msmtp "$to"
+    printf '%s\n' "sent reply to "$to""
+    printf '%s\n' "copying to "$SENT""
+    sent="$(bin/parser -c "$tmp" "$SENT")"
+    mark_seen "$1"
+    mark_replied "$1"S
+    mark_seen "$SENT/new/$sent"
+    mbsync -a
+}
+
+
+# Thanks Dylan.
+basename() {
+    local tmp
+
+    tmp=${1%"${1##*[!/]}"}
+    tmp=${tmp##*/}
+    tmp=${tmp%"${2/"$tmp"}"}
+
+    printf '%s\n' "${tmp:-/}"
+}
+
+dirname() {
+    local tmp=${1:-.}
+
+    [[ $tmp != *[!/]* ]] && {
+        printf '/\n'
+        return
+    }
+
+    tmp=${tmp%%"${tmp##*[!/]}"}
+
+    [[ $tmp != */* ]] && {
+        printf '.\n'
+        return
+    }
+
+    tmp=${tmp%/*}
+    tmp=${tmp%%"${tmp##*[!/]}"}
+
+    printf '%s\n' "${tmp:-/}"
+}
+
+# The 'S' flag is appended to the name of
+# the file, indicating that it has been seen.
+# We do a nested 'dirname' because we want the
+# path above 'cur', 'new' or 'tmp'.
+mark_seen() {
+    name="$(basename "$1")"
+    dir="$(dirname "$(dirname "$1")")"
+    mv "$1" "$dir/cur/$name"S
+}
+
+# The 'RS' flag is appended to the name of the
+# file, indicating that it has been replied to (and seen).
+# We assume it has been marked 'seen', hence always
+# mark_seen before mark_replied.
+mark_replied() {
+    name="$(basename "$1")"
+    dir="$(dirname "$(dirname "$1")")"
+    mv "$1" "$dir/cur/${name::-1}"RS
+}
+
+# The email is parsed, tossed into 'less' for viewing.
+# The screen is cleared after.
+# TODO: We're hardcoding 'less' here. Probably use a config
+# option for this?
+print_mail() {
+    content="$(bin/parser "$1")"
+    printf '%s' "$content" | less
+    printf '\e[2J\e[H'
+}
+
+main() {
+    sync
+    check_new
+}
+
+main "$@"

@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+
+from email import policy, utils
+from email.parser import BytesParser
+from email.utils import format_datetime, localtime
+from mailbox import Maildir
+from pathlib import Path
+import os
+import sys
+import datetime
+
+
+def parse(mail_file):
+    mf = os.path.expanduser(mail_file)
+    with open(mf, "rb") as f:
+        msg = BytesParser(policy=policy.default).parse(f)
+        return msg
+
+
+def print_content(msg, header_only=False):
+    print(f"""
+To: {msg["to"]}
+From: {msg["from"]}
+Subject: {msg["subject"]}
+Date: {msg["date"]}
+Cc: {msg["cc"]}
+Bcc: {msg["bcc"]}
+""")
+
+    x = msg.get_body(preferencelist=("plain"))
+    if not header_only:
+        print(x.get_content())
+
+
+def _to(msg):
+    print(f"{msg['to']}")
+
+
+def _from(msg):
+    print(f"{msg['from']}")
+
+
+def copy(src, dest):
+    with open(src) as f:
+        tmp = f.read()
+    
+    m = Maildir(dest)
+    print(m.add(tmp))
+
+
+
+def reply(msg):
+    print(f"""EDIT AS NEEDED!
+To: {msg["from"]}
+From: {msg["to"]}
+Subject: Re: {msg["subject"]}
+Cc: {msg["cc"]}
+Bcc: {msg["bcc"]}
+In-Reply-To: {msg["message-id"]}
+Date: {format_datetime(localtime())}
+""")
+
+    msg_str = msg.get_body(preferencelist=("plain")).get_content()
+    quoted = "> " + msg_str.replace("\n", "\n> ")
+    print()
+    print(quoted)
+
+
+
+if __name__ == "__main__":
+    if sys.argv[1] == "-h":
+        path = sys.argv[2]
+        m = parse(path)
+        print_content(m, header_only=True)
+
+    elif sys.argv[1] ==  "-r":
+        path = sys.argv[2]
+        m = parse(path)
+        reply(m)
+
+    elif sys.argv[1] == "--to":
+        path = sys.argv[2]
+        m = parse(path)
+        _to(m)
+
+    elif sys.argv[1] == "--from":
+        path = sys.argv[2]
+        m = parse(path)
+        _from(m)
+
+    elif sys.argv[1] == "-c":
+        src = sys.argv[2]
+        dest = sys.argv[3]
+        copy(src, dest)
+
+    else:
+        path = sys.argv[1]
+        m = parse(path)
+        print_content(m)
+
