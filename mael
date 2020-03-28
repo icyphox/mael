@@ -21,6 +21,14 @@ sync() {
     mbsync -qa
 }
 
+num_new() {
+    shopt -s nullglob
+    new=("$INBOX/new/"*) 
+    shopt -u nullglob
+    count="${#new[@]}"
+    printf '%s' "$count"
+}
+
 # All new email go into the 'new' dir. We populate
 # the 'new' array with all new email. This array should
 # be empty if there are none.
@@ -28,10 +36,7 @@ sync() {
 # the option to reply to each one -- handed off to 'reply()'.
 # On reading, each email is marked as 'seen'.
 check_new() {
-    shopt -s nullglob
-    new=("$INBOX/new/"*) 
-    shopt -u nullglob
-    count="${#new[@]}"
+    count="$(num_new)"
     if [[ "$count" -eq 0 ]]; then
         printf '%s\n' "no new mail"
     else
@@ -80,16 +85,21 @@ reply() {
     msg="$(mael-parser -r "$1")"
     to="$(mael-parser --from "$1")"
     tmp="$(mktemp_email)"
+
     printf '%s' "$msg" > "$tmp"
+
     $EDITOR "$tmp"
+
     printf '%s' "$(< "$tmp")" | msmtp "$to"
     printf '%s\n' "sent reply to $to"
     printf '%s\n' "copying to $SENT"
+
     sent="$(mael-parser -c "$tmp" "$SENT")"
     mark_seen "$1"
     mark_replied "$1"S
     mark_seen "$SENT/new/$sent"
-    mbsync -a
+
+    mbsync -qa
 }
 
 
@@ -155,14 +165,74 @@ print_mail() {
     printf '\e[2J\e[H'
 }
 
+quit() {
+    printf '\n%s\n' "bye!"
+    exit 1
+}
+
+cmd_help() {
+    help="
+    ?                this help menu
+    l[ist]           list all mail
+    s[ync]           check new mail
+    r[eply]          reply to mail
+    f[orward]        forward mail
+    c[ompose]        compose mail 
+    q (or Ctrl+C)    exit
+    "
+    printf '%s\n' "$help"
+}
+
 render_prompt() {
-    printf ''
+    intro="
+mael v0.1.0 -- an experimental mail client
+https://github.com/icyphox/mael
+The MIT License (MIT)
+Copyright (c) 2020 Anirudh Oppiliappan <x@icyphox.sh>
+    "
+    printf '%s\n' "$intro"
+
+    load_config
+#    sync
+#    check_new
+    while :; do
+        trap 'quit' INT
+        n="$(num_new)"
+        prompt="> "
+        [[ "$n" -ne 0 ]] && prompt="[$n] >"
+        read -rp "$prompt" input
+        case "$input" in
+            \?)
+                cmd_help
+                ;;
+            l*)
+                # list all email
+                ;;
+            c*)
+                # compose new
+                ;;
+            r*)
+                # reply
+                ;;
+            f*)
+                # forward
+                ;;
+            s*)
+                # sync
+                ;;
+            q)
+                quit
+                ;;
+            *)
+                printf '%s\n' "invalid command: $input"
+                printf '%s\n' "use '?' for help"
+                ;;
+        esac
+    done
 }
 
 main() {
-    load_config
-    sync
-    check_new
+    render_prompt
 }
 
 main "$@"
