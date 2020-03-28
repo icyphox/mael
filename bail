@@ -68,15 +68,15 @@ mktemp_email() {
 # and seen, mark the sent message as seen. 
 # Finally, sync the mailbox.
 reply() {
-    msg="$(bin/parser -r "$1")"
-    to="$(bin/parser --from "$1")"
+    msg="$(bail-parser -r "$1")"
+    to="$(bail-parser --from "$1")"
     tmp="$(mktemp_email)"
     printf '%s' "$msg" > "$tmp"
     $BAIL_EDITOR "$tmp"
     printf '%s' "$(< "$tmp")" | msmtp "$to"
     printf '%s\n' "sent reply to "$to""
     printf '%s\n' "copying to "$SENT""
-    sent="$(bin/parser -c "$tmp" "$SENT")"
+    sent="$(bail-parser -c "$tmp" "$SENT")"
     mark_seen "$1"
     mark_replied "$1"S
     mark_seen "$SENT/new/$sent"
@@ -141,7 +141,7 @@ mark_replied() {
 # TODO: We're hardcoding 'less' here. Probably use a config
 # option for this?
 print_mail() {
-    content="$(bin/parser "$1")"
+    content="$(bail-parser "$1")"
     printf '%s' "$content" | less
     printf '\e[2J\e[H'
 }
