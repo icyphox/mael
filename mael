@@ -98,6 +98,7 @@ list_all() {
 
 # 'mktemp' doesn't allow custom extensions, so
 # we make it ourselves.
+# TODO: Can we not use 'mktemp'?
 mktemp_email() {
     tmp="$(mktemp -t mael.XXXXXX)"
     mv "$tmp" "$tmp.eml"
@@ -107,37 +108,54 @@ mktemp_email() {
 # Send a message ($1) to a recepient ($2).
 # The sent message is subsequently copied to SENT
 # and marked as 'seen'.
+# TODO: Suggest an option to save as draft, edit again
+# or discard.
 send() {
     msg="$1"
     to="$2"
+
     printf '%s' "$(< "$msg")" | msmtp "$to"
     printf '%s\n' "sent reply to $to"
     printf '%s\n' "copying to $SENT"
-    sent="$(./mael-parser -c "$tmp" "$SENT")"
+
+    mbsync -qa
+    sent="$(./mael-parser -c "$msg" "$SENT")"
     mark_seen "$SENT/new/$sent"
 }
 
-# We send the message for parsing, toss the quoted
-# form into the tempfile. Launch the editor on the 
-# file -- on close, we send the message. 
-# Another call to the parser to copy the tmp
-# message to SENT. Mark the initial message as replied
-# and seen, mark the sent message as seen. 
-# Finally, sync the mailbox.
+# The selected mail (index) and the path (folder) 
+# are sent to the parser, which returns a 'msg'.
+# We use this to fetch the 'to' and the reply template.
 reply() {
-    msg="$(./mael-parser -r "$1")"
-    to="$(./mael-parser -f "$1")"
+    [[ ! -v selected_mail ]] && {
+        printf 'error: you must select a mail first\n' 
+        return
+    }
+
+    msg="$(./mael-parser -r "$selected_path" "$selected_mail")"
+    to="$(./mael-parser -f "$selected_path" "$selected_mail")"
+    mail_path="$(./mael-parser -p "$selected_path" "$selected_mail")"
     tmp="$(mktemp_email)"
-
+    flags="$(./mael-parser -F "$selected_path" "$selected_mail")"
+    
     printf '%s' "$msg" > "$tmp"
-
     $EDITOR "$tmp"
-
     send "$tmp" "$to"
 
-    mark_seen "$1"
-    mark_replied "$1"S
+    # If the message hasn't been seen yet,
+    # we mark it as 'seen'.
+    if [[ "$flags" != *S* ]]; then
+        mark_seen "$mail_path"
 
+        # Mark replied (with 'S' flag).
+        mark_replied "$mail_path"S
+
+    else
+
+        # Mark replied (without 'S' flag).
+        mark_replied "$mail_path"
+
+    fi
     mbsync -qa
 }
 
@@ -182,7 +200,11 @@ dirname() {
 mark_seen() {
     name="$(basename "$1")"
     dir="$(dirname "$(dirname "$1")")"
-    mv "$1" "$dir/cur/$name"S
+    if [[ "${dir: -1}" == "," ]]; then
+        mv "$1" "$dir/cur/$name"S
+    else
+        mv "$1" "$dir/cur/$name",S
+    fi
 }
 
 # The 'RS' flag is appended to the name of the
@@ -254,7 +276,7 @@ Copyright (c) 2020 Anirudh Oppiliappan <x@icyphox.sh>
                 # compose new
                 ;;
             r*)
-                # reply
+                reply
                 ;;
             f*)
                 # forward

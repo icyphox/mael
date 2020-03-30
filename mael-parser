@@ -39,17 +39,14 @@ def _to(msg):
 
 
 def _from(msg):
-    # print(f"{msg['from']}")
     return f"{msg['from']}"
 
 
 def _subj(msg):
-    # print(f"{msg['subject']}")
     return f"{msg['subject']}"
 
 
 def _date(msg):
-    # print(f"{msg['date']}")
     return f"{msg['date']}"
 
 
@@ -81,14 +78,14 @@ Date: {format_datetime(localtime())}
 
 
 # Parses all mail at a given path, and returns a list of
-# parsed and sorted messages.
+# tuples -- ('path_to_mail', 'msg object') 
 def parse_all(path):
     mails = [os.path.join(path, m) for m in os.listdir(path)]
 
     # remove all that contain the 'T' flag
     without_t = list(filter(lambda m: "T" not in m.split(",")[2], mails))
-    parsed = list(map(parse, without_t))
-    parsed.sort(key=lambda m: parsedate_to_datetime(_date(m)), reverse=True)
+    parsed = list(map(lambda t: (t, parse(t)), without_t))
+    parsed.sort(key=lambda m: parsedate_to_datetime(_date(m[1])), reverse=True)
 
     return parsed
 
@@ -97,7 +94,7 @@ def parse_all(path):
 # This is used for generating the email listing ('l' command).
 def list_all(path):
     parsed = parse_all(path)
-    for msg in parsed:
+    for _, msg in parsed:
         dt = parsedate_to_datetime(_date(msg))
         d = dt.strftime("%d %b %Y %H:%M")
         f, _ = parseaddr(_from(msg))
@@ -107,44 +104,59 @@ def list_all(path):
 
 
 if __name__ == "__main__":
+    # Returns only the header of the selected mail.
     if sys.argv[1] == "-h":
         path = sys.argv[2]
         m = parse(path)
         print_content(m, header_only=True)
 
+    # Generates a reply for the selected mail.
     elif sys.argv[1] == "-r":
         path = sys.argv[2]
-        m = parse(path)
-        reply(m)
+        index = int(sys.argv[3])
+        _, msg = parse_all(path)[index]
+        reply(msg)
 
-    elif sys.argv[1] == "-t":
+    # Returns the path on disk for the selected mail.
+    elif sys.argv[1] == "-p":
         path = sys.argv[2]
-        m = parse(path)
-        _to(m)
+        index = int(sys.argv[3])
+        mail_path, _ = parse_all(path)[index]
+        print(mail_path)
 
+    # Returns the 'from' for the selected mail.
     elif sys.argv[1] == "-f":
         path = sys.argv[2]
-        m = parse(path)
-        _from(m)
+        index = int(sys.argv[3])
+        _, msg = parse_all(path)[index]
+        print(_from(msg))
 
     # Select an email, and return its message.
-#    elif sys.argv[1] == "-s":
-#        path = sys.argv[2]
-#        index = sys.argv[3]
-#        msg = parse_all(path)[index]
-#
-#        print(msg)
+    elif sys.argv[1] == "-s":
+        path = sys.argv[2]
+        index = int(sys.argv[3])
+        _, msg = parse_all(path)[index]
+
+    # Returns the flags set for a given mail.
+    elif sys.argv[1] == "-F":
+        path = sys.argv[2]
+        index = int(sys.argv[3])
+        mail_path, _ = parse_all(path)[index]
+        print(mail_path.split(",")[2])
 
 
+    # Copies mail from source to dest.
     elif sys.argv[1] == "-c":
         src = sys.argv[2]
         dest = sys.argv[3]
         copy(src, dest)
 
+    # Lists all mail at given path.
     elif sys.argv[1] == "-l":
         path = sys.argv[2]
         list_all(path)
 
+    # Else, just prints content of mail.
     else:
         path = sys.argv[1]
         m = parse(path)
