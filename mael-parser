@@ -9,7 +9,6 @@ import os
 import sys
 import datetime
 
-
 def parse(mail_file):
     mf = os.path.expanduser(mail_file)
     with open(mf, "rb") as f:
@@ -18,14 +17,16 @@ def parse(mail_file):
 
 
 def print_content(msg, header_only=False):
-    print(f"""
+    print(
+        f"""
 To: {msg["to"]}
 From: {msg["from"]}
 Subject: {msg["subject"]}
 Date: {msg["date"]}
 Cc: {msg["cc"]}
 Bcc: {msg["bcc"]}
-""")
+"""
+    )
 
     x = msg.get_body(preferencelist=("plain"))
     if not header_only:
@@ -34,32 +35,35 @@ Bcc: {msg["bcc"]}
 
 def _to(msg):
     print(f"{msg['to']}")
-    return(f"{msg['to']}")
+    return f"{msg['to']}"
 
 
 def _from(msg):
-    #print(f"{msg['from']}")
-    return(f"{msg['from']}")
+    # print(f"{msg['from']}")
+    return f"{msg['from']}"
+
 
 def _subj(msg):
-    #print(f"{msg['subject']}")
-    return(f"{msg['subject']}")
+    # print(f"{msg['subject']}")
+    return f"{msg['subject']}"
+
 
 def _date(msg):
     # print(f"{msg['date']}")
-    return(f"{msg['date']}")
+    return f"{msg['date']}"
 
 
 def copy(src, dest):
     with open(src) as f:
         tmp = f.read()
-    
+
     m = Maildir(dest)
     print(m.add(tmp))
 
 
 def reply(msg):
-    print(f"""EDIT AS NEEDED!
+    print(
+        f"""EDIT AS NEEDED!
 To: {msg["from"]}
 From: {msg["to"]}
 Subject: Re: {msg["subject"]}
@@ -67,7 +71,8 @@ Cc: {msg["cc"]}
 Bcc: {msg["bcc"]}
 In-Reply-To: {msg["message-id"]}
 Date: {format_datetime(localtime())}
-""")
+"""
+    )
 
     msg_str = msg.get_body(preferencelist=("plain")).get_content()
     quoted = "> " + msg_str.replace("\n", "\n> ")
@@ -75,21 +80,30 @@ Date: {format_datetime(localtime())}
     print(quoted)
 
 
-def list_subj(path):
+# Parses all mail at a given path, and returns a list of
+# parsed and sorted messages.
+def parse_all(path):
     mails = [os.path.join(path, m) for m in os.listdir(path)]
-    # remove all that contain the 'T' flag
-    without_t = list(filter(lambda m: 'T' not in m.split(",")[2], mails))
-    parsed = list(map(parse, without_t))
-    parsed.sort(
-            key=lambda m: parsedate_to_datetime(_date(m)), 
-            reverse=True)
 
+    # remove all that contain the 'T' flag
+    without_t = list(filter(lambda m: "T" not in m.split(",")[2], mails))
+    parsed = list(map(parse, without_t))
+    parsed.sort(key=lambda m: parsedate_to_datetime(_date(m)), reverse=True)
+
+    return parsed
+
+
+# Lists all email in the given path, formatted all nicely.
+# This is used for generating the email listing ('l' command).
+def list_all(path):
+    parsed = parse_all(path)
     for msg in parsed:
         dt = parsedate_to_datetime(_date(msg))
         d = dt.strftime("%d %b %Y %H:%M")
         f, _ = parseaddr(_from(msg))
         s = _subj(msg)
-        print("{:<10} {:<25} {:<40}".format(d, f, s))
+        print("{:<10}  {:<25}  {:<40}".format(d, f, s))
+
 
 
 if __name__ == "__main__":
@@ -98,7 +112,7 @@ if __name__ == "__main__":
         m = parse(path)
         print_content(m, header_only=True)
 
-    elif sys.argv[1] ==  "-r":
+    elif sys.argv[1] == "-r":
         path = sys.argv[2]
         m = parse(path)
         reply(m)
@@ -113,6 +127,15 @@ if __name__ == "__main__":
         m = parse(path)
         _from(m)
 
+    # Select an email, and return its message.
+#    elif sys.argv[1] == "-s":
+#        path = sys.argv[2]
+#        index = sys.argv[3]
+#        msg = parse_all(path)[index]
+#
+#        print(msg)
+
+
     elif sys.argv[1] == "-c":
         src = sys.argv[2]
         dest = sys.argv[3]
@@ -120,10 +143,9 @@ if __name__ == "__main__":
 
     elif sys.argv[1] == "-l":
         path = sys.argv[2]
-        list_subj(path)
+        list_all(path)
 
     else:
         path = sys.argv[1]
         m = parse(path)
         print_content(m)
-

@@ -22,6 +22,7 @@ sync() {
     check_new
 }
 
+# Returns the count of new mail.
 num_new() {
     shopt -s nullglob
     new=("$INBOX/new/"*) 
@@ -31,37 +32,40 @@ num_new() {
 }
 
 # Check if there's new mail. If yes, prints
-# the count.
+# the count. Runs at startup.
 check_new() {
+    local count
     count="$(num_new)"
     if [[ "$count" -eq 0 ]]; then
         printf '%s\n' "no new mail"
     else
         printf '%s\n' "you have $count new mail"
-#        printf 'would you like to read them? [y/n]'
-#        read -rsn1 input
-#        case "$input" in
-#            "y")
-#                for m in "${new[@]}"; do
-#                    print_mail "$m"
-#                    ((count--))
-#                    printf '%s\n' "press 'r' to reply, anything else to continue"
-#                    read -rsn1 inp
-#                    if [[ "$inp" == "r"  ]]; then
-#                        reply "$m"
-#                    else
-#                        mark_seen "$m"
-#                    fi
-#                    [[ "$count" -eq 0 ]] && break
-#                    printf '%s\n' "there are $count new mail remaining"
-#                done
-#                ;;
-#            *)
-#                ;;
-#        esac
     fi
 }
 
+# Select a mail to operate on.
+# Possible ops:
+#   reply
+#   forward
+#   view
+#   trash
+select_mail() {
+    selected_mail="$1"
+    merged_list=("${list_old[@]}" "${list_new[@]}")
+    if [[ -v merged_list["$selected_mail"] ]]; then
+        if [[ -v list_old["$selected_mail"] ]]; then
+            selected_path="$INBOX/cur"
+        else
+            selected_path="$INBOX/new"
+        fi
+    else
+        printf '%s\n' "error: select a correct index"
+        return
+    fi
+
+    printf '%s\n' "what would you like to do?"
+    printf '%s\n' "use '?' for a list of options"
+}
 
 # A generic function to list all email. Lists new mail if it 
 # exists. The output is formatted Python-side.
@@ -70,13 +74,21 @@ list_all() {
     printf '\e[?7l'
     mapfile -tn 0 list_old < <(./mael-parser -l "$INBOX/cur")
 
-    printf '%s\n' "${list_old[@]}"
-
+    local count=0
+    for l in "${list_old[@]}"; do
+        printf '%b  %s\n' "\e[1m$count\e[0m" "$l"
+        ((count++))
+    done
+ 
     [[ "$(num_new)" -ne 0 ]] && {
         mapfile -tn 0 list_new < <(./mael-parser -l "$INBOX/new")
         printf '\n\n'
         printf '%b\n' "\e[1mnew email\e[0m"
-        printf '%s\n' "${list_new[@]}" 
+
+        for l in "${list_new[@]}"; do
+            printf '%b  %s\n' "\e[1m$count\e[0m" "$l"
+            ((count++))
+        done
     }   
     
     # Enable line wrapping.
@@ -90,6 +102,19 @@ mktemp_email() {
     tmp="$(mktemp -t mael.XXXXXX)"
     mv "$tmp" "$tmp.eml"
     printf '%s' "$tmp.eml"
+}
+
+# Send a message ($1) to a recepient ($2).
+# The sent message is subsequently copied to SENT
+# and marked as 'seen'.
+send() {
+    msg="$1"
+    to="$2"
+    printf '%s' "$(< "$msg")" | msmtp "$to"
+    printf '%s\n' "sent reply to $to"
+    printf '%s\n' "copying to $SENT"
+    sent="$(./mael-parser -c "$tmp" "$SENT")"
+    mark_seen "$SENT/new/$sent"
 }
 
 # We send the message for parsing, toss the quoted
@@ -108,14 +133,10 @@ reply() {
 
     $EDITOR "$tmp"
 
-    printf '%s' "$(< "$tmp")" | msmtp "$to"
-    printf '%s\n' "sent reply to $to"
-    printf '%s\n' "copying to $SENT"
+    send "$tmp" "$to"
 
-    sent="$(./mael-parser -c "$tmp" "$SENT")"
     mark_seen "$1"
     mark_replied "$1"S
-    mark_seen "$SENT/new/$sent"
 
     mbsync -qa
 }
@@ -132,6 +153,7 @@ basename() {
     printf '%s\n' "${tmp:-/}"
 }
 
+# Thaknks Dylan, again.
 dirname() {
     local tmp=${1:-.}
 
@@ -192,8 +214,9 @@ cmd_help() {
     help="
     ?                this help menu
     l[ist]           list all mail
-    s[ync]           check new mail
+    sy[nc]           check new mail
     r[eply]          reply to mail
+    se[lect]         select mail
     f[orward]        forward mail
     c[ompose]        compose mail 
     q (or Ctrl+C)    exit
@@ -212,13 +235,15 @@ Copyright (c) 2020 Anirudh Oppiliappan <x@icyphox.sh>
     printf '%s\n' "$intro"
 
     load_config
+
     while :; do
         trap 'quit' INT
         n="$(num_new)"
         prompt="> "
-        [[ "$n" -ne 0 ]] && prompt="[$n] > "
-        read -rp "$prompt" input
-        case "$input" in
+        [[ "$n" -ne 0 ]] && prompt="new [$n] > "
+        [[ -v selected_mail ]] && prompt="selected [$selected_mail] > "
+        read -rp "$prompt" cmd args
+        case "$cmd" in
             \?)
                 cmd_help
                 ;;
@@ -234,14 +259,17 @@ Copyright (c) 2020 Anirudh Oppiliappan <x@icyphox.sh>
             f*)
                 # forward
                 ;;
-            s*)
+            sy*)
                 sync
+                ;;
+            se*)
+                select_mail "$args"
                 ;;
             q)
                 quit
                 ;;
             *)
-                printf '%s\n' "invalid command: $input"
+                printf '%s\n' "invalid command: $cmd"
                 printf '%s\n' "use '?' for help"
                 ;;
         esac
