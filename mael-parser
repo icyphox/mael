@@ -2,7 +2,7 @@
 
 from email import policy, utils
 from email.parser import BytesParser
-from email.utils import format_datetime, localtime
+from email.utils import format_datetime, localtime, parseaddr, parsedate_to_datetime
 from mailbox import Maildir
 from pathlib import Path
 import os
@@ -34,10 +34,20 @@ Bcc: {msg["bcc"]}
 
 def _to(msg):
     print(f"{msg['to']}")
+    return(f"{msg['to']}")
 
 
 def _from(msg):
-    print(f"{msg['from']}")
+    #print(f"{msg['from']}")
+    return(f"{msg['from']}")
+
+def _subj(msg):
+    #print(f"{msg['subject']}")
+    return(f"{msg['subject']}")
+
+def _date(msg):
+    # print(f"{msg['date']}")
+    return(f"{msg['date']}")
 
 
 def copy(src, dest):
@@ -46,7 +56,6 @@ def copy(src, dest):
     
     m = Maildir(dest)
     print(m.add(tmp))
-
 
 
 def reply(msg):
@@ -66,6 +75,22 @@ Date: {format_datetime(localtime())}
     print(quoted)
 
 
+def list_subj(path):
+    mails = [os.path.join(path, m) for m in os.listdir(path)]
+    # remove all that contain the 'T' flag
+    without_t = list(filter(lambda m: 'T' not in m.split(",")[2], mails))
+    parsed = list(map(parse, without_t))
+    parsed.sort(
+            key=lambda m: parsedate_to_datetime(_date(m)), 
+            reverse=True)
+
+    for msg in parsed:
+        dt = parsedate_to_datetime(_date(msg))
+        d = dt.strftime("%d %b %Y %H:%M")
+        f, _ = parseaddr(_from(msg))
+        s = _subj(msg)
+        print("{:<10} {:<25} {:<40}".format(d, f, s))
+
 
 if __name__ == "__main__":
     if sys.argv[1] == "-h":
@@ -78,12 +103,12 @@ if __name__ == "__main__":
         m = parse(path)
         reply(m)
 
-    elif sys.argv[1] == "--to":
+    elif sys.argv[1] == "-t":
         path = sys.argv[2]
         m = parse(path)
         _to(m)
 
-    elif sys.argv[1] == "--from":
+    elif sys.argv[1] == "-f":
         path = sys.argv[2]
         m = parse(path)
         _from(m)
@@ -92,6 +117,10 @@ if __name__ == "__main__":
         src = sys.argv[2]
         dest = sys.argv[3]
         copy(src, dest)
+
+    elif sys.argv[1] == "-l":
+        path = sys.argv[2]
+        list_subj(path)
 
     else:
         path = sys.argv[1]

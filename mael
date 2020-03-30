@@ -15,10 +15,11 @@ load_config() {
     fi
 }
 
-# Sync all mailboxes.
+# Sync all mailboxes. Check for new mail.
 sync() {
     printf '%s\n' "syncing mail..."
     mbsync -qa
+    check_new
 }
 
 num_new() {
@@ -29,40 +30,57 @@ num_new() {
     printf '%s' "$count"
 }
 
-# All new email go into the 'new' dir. We populate
-# the 'new' array with all new email. This array should
-# be empty if there are none.
-# The user is then prompted to reach each email, and has
-# the option to reply to each one -- handed off to 'reply()'.
-# On reading, each email is marked as 'seen'.
+# Check if there's new mail. If yes, prints
+# the count.
 check_new() {
     count="$(num_new)"
     if [[ "$count" -eq 0 ]]; then
         printf '%s\n' "no new mail"
     else
         printf '%s\n' "you have $count new mail"
-        printf 'would you like to read them? [y/n]'
-        read -rsn1 input
-        case "$input" in
-            "y")
-                for m in "${new[@]}"; do
-                    print_mail "$m"
-                    ((count--))
-                    printf '%s\n' "press 'r' to reply, anything else to continue"
-                    read -rsn1 inp
-                    if [[ "$inp" == "r"  ]]; then
-                        reply "$m"
-                    else
-                        mark_seen "$m"
-                    fi
-                    [[ "$count" -eq 0 ]] && break
-                    printf '%s\n' "there are $count new mail remaining"
-                done
-                ;;
-            *)
-                ;;
-        esac
+#        printf 'would you like to read them? [y/n]'
+#        read -rsn1 input
+#        case "$input" in
+#            "y")
+#                for m in "${new[@]}"; do
+#                    print_mail "$m"
+#                    ((count--))
+#                    printf '%s\n' "press 'r' to reply, anything else to continue"
+#                    read -rsn1 inp
+#                    if [[ "$inp" == "r"  ]]; then
+#                        reply "$m"
+#                    else
+#                        mark_seen "$m"
+#                    fi
+#                    [[ "$count" -eq 0 ]] && break
+#                    printf '%s\n' "there are $count new mail remaining"
+#                done
+#                ;;
+#            *)
+#                ;;
+#        esac
     fi
+}
+
+
+# A generic function to list all email. Lists new mail if it 
+# exists. The output is formatted Python-side.
+list_all() {
+    # Disable line wrapping.
+    printf '\e[?7l'
+    mapfile -tn 0 list_old < <(./mael-parser -l "$INBOX/cur")
+
+    printf '%s\n' "${list_old[@]}"
+
+    [[ "$(num_new)" -ne 0 ]] && {
+        mapfile -tn 0 list_new < <(./mael-parser -l "$INBOX/new")
+        printf '\n\n'
+        printf '%b\n' "\e[1mnew email\e[0m"
+        printf '%s\n' "${list_new[@]}" 
+    }   
+    
+    # Enable line wrapping.
+    printf '\e[?7h'
 }
 
 
@@ -82,8 +100,8 @@ mktemp_email() {
 # and seen, mark the sent message as seen. 
 # Finally, sync the mailbox.
 reply() {
-    msg="$(mael-parser -r "$1")"
-    to="$(mael-parser --from "$1")"
+    msg="$(./mael-parser -r "$1")"
+    to="$(./mael-parser -f "$1")"
     tmp="$(mktemp_email)"
 
     printf '%s' "$msg" > "$tmp"
@@ -94,7 +112,7 @@ reply() {
     printf '%s\n' "sent reply to $to"
     printf '%s\n' "copying to $SENT"
 
-    sent="$(mael-parser -c "$tmp" "$SENT")"
+    sent="$(./mael-parser -c "$tmp" "$SENT")"
     mark_seen "$1"
     mark_replied "$1"S
     mark_seen "$SENT/new/$sent"
@@ -160,7 +178,7 @@ mark_replied() {
 # TODO: We're hardcoding 'less' here. Probably use a config
 # option for this?
 print_mail() {
-    content="$(mael-parser "$1")"
+    content="$(./mael-parser "$1")"
     printf '%s' "$content" | less
     printf '\e[2J\e[H'
 }
@@ -190,23 +208,22 @@ https://github.com/icyphox/mael
 The MIT License (MIT)
 Copyright (c) 2020 Anirudh Oppiliappan <x@icyphox.sh>
     "
+
     printf '%s\n' "$intro"
 
     load_config
-#    sync
-#    check_new
     while :; do
         trap 'quit' INT
         n="$(num_new)"
         prompt="> "
-        [[ "$n" -ne 0 ]] && prompt="[$n] >"
+        [[ "$n" -ne 0 ]] && prompt="[$n] > "
         read -rp "$prompt" input
         case "$input" in
             \?)
                 cmd_help
                 ;;
             l*)
-                # list all email
+                list_all
                 ;;
             c*)
                 # compose new
@@ -218,7 +235,7 @@ Copyright (c) 2020 Anirudh Oppiliappan <x@icyphox.sh>
                 # forward
                 ;;
             s*)
-                # sync
+                sync
                 ;;
             q)
                 quit
