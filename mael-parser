@@ -9,11 +9,9 @@ import os
 import sys
 import datetime
 
-def parse(mail_file):
-    mf = os.path.expanduser(mail_file)
-    with open(mf, "rb") as f:
-        msg = BytesParser(policy=policy.default).parse(f)
-        return msg
+def parse(bytes_msg):
+    msg = BytesParser(policy=policy.compat32).parsebytes(bytes_msg)
+    return msg
 
 
 def print_content(msg, header_only=False):
@@ -61,6 +59,8 @@ def copy(src, dest):
 def reply(msg):
     print(
         f"""EDIT AS NEEDED!
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/plain; charset=UTF-8
 To: {msg["from"]}
 From: {msg["to"]}
 Subject: Re: {msg["subject"]}
@@ -79,22 +79,36 @@ Date: {format_datetime(localtime())}
 
 # Parses all mail at a given path, and returns a list of
 # tuples -- ('path_to_mail', 'msg object') 
-def parse_all(path):
-    mails = [os.path.join(path, m) for m in os.listdir(path)]
+def parse_all(path, new=False):
+    mbox = Maildir(path)
+    mbox.lock()
+    mails = [msg for msg_id, msg in mbox.iteritems()]
 
     # remove all that contain the 'T' flag
-    without_t = list(filter(lambda m: "T" not in m.split(",")[2], mails))
-    parsed = list(map(lambda t: (t, parse(t)), without_t))
-    parsed.sort(key=lambda m: parsedate_to_datetime(_date(m[1])), reverse=True)
+    without_t = list(filter(lambda m: "T" not in m.get_flags(), mails))
+    if new:
+        new = []
+        for m in without_t:
+            if m.get_subdir() == "new":
+                new.append(m)
+        parsed = list(map(lambda x: parse(bytes(x)), new))
 
+    else:
+        cur = []
+        for m in without_t:
+            if m.get_subdir() == "cur":
+                cur.append(m)
+        parsed = list(map(lambda x: parse(bytes(x)), cur))
+
+        parsed.sort(key=lambda m: parsedate_to_datetime(_date(m)), reverse=True)
     return parsed
 
 
 # Lists all email in the given path, formatted all nicely.
 # This is used for generating the email listing ('l' command).
-def list_all(path):
-    parsed = parse_all(path)
-    for _, msg in parsed:
+def list_all(path, new=False):
+    parsed = parse_all(path, new)
+    for msg in parsed:
         dt = parsedate_to_datetime(_date(msg))
         d = dt.strftime("%d %b %Y %H:%M")
         f, _ = parseaddr(_from(msg))
@@ -144,6 +158,13 @@ if __name__ == "__main__":
         mail_path, _ = parse_all(path)[index]
         print(mail_path.split(",")[2])
 
+    elif sys.argv[1] == "--add-flag":
+        path = sys.argv[2]
+        index = int(sys.argv[3])
+        flag = sys.argv[4]
+        _, msg = parse_all(path)[index]
+        msg.add_flag(flag)
+
 
     # Copies mail from source to dest.
     elif sys.argv[1] == "-c":
@@ -152,9 +173,13 @@ if __name__ == "__main__":
         copy(src, dest)
 
     # Lists all mail at given path.
-    elif sys.argv[1] == "-l":
+    elif sys.argv[1] == "--list-old":
         path = sys.argv[2]
         list_all(path)
+
+    elif sys.argv[1] == "--list-new":
+        path = sys.argv[2]
+        list_all(path, new=True)
 
     # Else, just prints content of mail.
     else:
