@@ -9,8 +9,9 @@ import os
 import sys
 import datetime
 
+
 def parse(bytes_msg):
-    msg = BytesParser(policy=policy.compat32).parsebytes(bytes_msg)
+    msg = BytesParser(policy=policy.default).parsebytes(bytes_msg)
     return msg
 
 
@@ -78,7 +79,7 @@ Date: {format_datetime(localtime())}
 
 
 # Parses all mail at a given path, and returns a list of
-# tuples -- ('path_to_mail', 'msg object') 
+# tuples -- ('path_to_mail', 'msg object')
 def parse_all(path, new=False):
     mbox = Maildir(path)
     mbox.lock()
@@ -98,9 +99,11 @@ def parse_all(path, new=False):
         for m in without_t:
             if m.get_subdir() == "cur":
                 cur.append(m)
-        parsed = list(map(lambda x: parse(bytes(x)), cur))
+        parsed = list(map(lambda x: (parse(bytes(x)), without_t), cur))
 
-        parsed.sort(key=lambda m: parsedate_to_datetime(_date(m)), reverse=True)
+    parsed.sort(key=lambda m: parsedate_to_datetime(_date(m[0])), reverse=True)
+
+    # Returns a tuple of parsed mail and MaildirMessage objects.
     return parsed
 
 
@@ -108,13 +111,12 @@ def parse_all(path, new=False):
 # This is used for generating the email listing ('l' command).
 def list_all(path, new=False):
     parsed = parse_all(path, new)
-    for msg in parsed:
+    for msg in parsed[0]:
         dt = parsedate_to_datetime(_date(msg))
         d = dt.strftime("%d %b %Y %H:%M")
         f, _ = parseaddr(_from(msg))
         s = _subj(msg)
         print("{:<10}  {:<25}  {:<40}".format(d, f, s))
-
 
 
 if __name__ == "__main__":
@@ -127,44 +129,51 @@ if __name__ == "__main__":
     # Generates a reply for the selected mail.
     elif sys.argv[1] == "-r":
         path = sys.argv[2]
-        index = int(sys.argv[3])
-        _, msg = parse_all(path)[index]
+        mail_type = sys.argv[3]
+        index = int(sys.argv[4])
+        if mail_type == "new":
+            parsed = parse_all(path, new=True)
+            msg = parsed[0][index]
+        else:
+            parsed = parse_all(path)
+            msg = parsed[index]
         reply(msg)
 
     # Returns the path on disk for the selected mail.
-    elif sys.argv[1] == "-p":
-        path = sys.argv[2]
-        index = int(sys.argv[3])
-        mail_path, _ = parse_all(path)[index]
-        print(mail_path)
+    #elif sys.argv[1] == "-p":
+    #    path = sys.argv[2]
+    #    index = int(sys.argv[3])
+    #    mail_path, _ = parse_all(path)[index]
+    #    print(mail_path)
 
     # Returns the 'from' for the selected mail.
     elif sys.argv[1] == "-f":
         path = sys.argv[2]
-        index = int(sys.argv[3])
-        _, msg = parse_all(path)[index]
+        mail_type = sys.argv[3]
+        index = int(sys.argv[4])
+        parsed, _ = parse_all(path)[index]
+        msg = parsed[index]
         print(_from(msg))
 
     # Select an email, and return its message.
-    elif sys.argv[1] == "-s":
-        path = sys.argv[2]
-        index = int(sys.argv[3])
-        _, msg = parse_all(path)[index]
+    #elif sys.argv[1] == "-s":
+    #    path = sys.argv[2]
+    #    index = int(sys.argv[3])
+    #    msg = parse_all(path)[index]
 
     # Returns the flags set for a given mail.
-    elif sys.argv[1] == "-F":
-        path = sys.argv[2]
-        index = int(sys.argv[3])
-        mail_path, _ = parse_all(path)[index]
-        print(mail_path.split(",")[2])
+    #elif sys.argv[1] == "-F":
+    #    path = sys.argv[2]
+    #    index = int(sys.argv[3])
+    #    mail_path, _ = parse_all(path)[index]
+    #    print(mail_path.split(",")[2])
 
     elif sys.argv[1] == "--add-flag":
         path = sys.argv[2]
         index = int(sys.argv[3])
         flag = sys.argv[4]
-        _, msg = parse_all(path)[index]
+        _,  = parse_all(path)[index]
         msg.add_flag(flag)
-
 
     # Copies mail from source to dest.
     elif sys.argv[1] == "-c":
@@ -173,13 +182,13 @@ if __name__ == "__main__":
         copy(src, dest)
 
     # Lists all mail at given path.
-    elif sys.argv[1] == "--list-old":
+    elif sys.argv[1] == "-l":
         path = sys.argv[2]
-        list_all(path)
-
-    elif sys.argv[1] == "--list-new":
-        path = sys.argv[2]
-        list_all(path, new=True)
+        mail_type=sys.argv[3]
+        if mail_type == "new":
+            list_all(path, new=True)
+        else:
+            list_all(path)
 
     # Else, just prints content of mail.
     else:

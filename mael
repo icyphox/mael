@@ -55,9 +55,9 @@ select_mail() {
     merged_list=("${list_old[@]}" "${list_new[@]}")
     if [[ -v merged_list["$selected_mail"] ]]; then
         if [[ -v list_old["$selected_mail"] ]]; then
-            selected_path="$INBOX/cur"
+            mail_type="cur"
         else
-            selected_path="$INBOX/new"
+            mail_type="new"
 
             # The actual index of selected new mail
             # will be the difference of the selected index
@@ -80,7 +80,7 @@ select_mail() {
 list_all() {
     # Disable line wrapping.
     printf '\e[?7l'
-    mapfile -tn 0 list_old < <(./mael-parser --list-old "$INBOX")
+    mapfile -tn 0 list_old < <(./mael-parser -l "$INBOX" "cur")
 
     local count=0
     for l in "${list_old[@]}"; do
@@ -89,7 +89,7 @@ list_all() {
     done
  
     [[ "$(num_new)" -ne 0 ]] && {
-        mapfile -tn 0 list_new < <(./mael-parser --list-new "$INBOX")
+        mapfile -tn 0 list_new < <(./mael-parser -l "$INBOX" "new")
         printf '\n\n'
         printf '%b\n' "\e[1mnew email\e[0m"
 
@@ -127,7 +127,7 @@ send() {
     printf '%s\n' "copying to $SENT"
 
     sent="$(./mael-parser -c "$msg" "$SENT")"
-    mark_seen "$SENT/new/$sent"
+    mark_seen "$SENT"
 }
 
 # The selected mail (index) and the path (folder) 
@@ -140,20 +140,18 @@ reply() {
     }
 
     printf '%s\n' "$selected_mail"
-    msg="$(./mael-parser -r "$selected_path" "$selected_mail")"
-    to="$(./mael-parser -f "$selected_path" "$selected_mail")"
-    mail_path="$(./mael-parser -p "$selected_path" "$selected_mail")"
+    msg="$(./mael-parser -r "$INBOX" "$mail_type" "$selected_mail")"
+    to="$(./mael-parser -f "$INBOX" "$mail_type" "$selected_mail")"
     tmp="$(mktemp_email)"
-    flags="$(./mael-parser -F "$selected_path" "$selected_mail")"
-
-    printf '%s\n' "$flags"
 
     printf '%s' "$msg" > "$tmp"
-    $EDITOR "$tmp"
-    send "$tmp" "$to"
+    cat "$tmp"
+    #$EDITOR "$tmp"
+    printf '%s\n' "not actually sending"
+    # send "$tmp" "$to"
 
-    mark_seen
-    mark_replied
+    mark_seen "$INBOX"
+    mark_replied "$INBOX"
 }
 
 
@@ -195,7 +193,8 @@ dirname() {
 # We do a nested 'dirname' because we want the
 # path above 'cur', 'new' or 'tmp'.
 mark_seen() {
-    ./mael-parser --add-flag "$selected_path" "$selected_mail" "S"
+    mailbox="$1"
+    ./mael-parser --add-flag "$mailbox/$selected_path" "$selected_mail" "S"
 }
 
 # The 'RS' flag is appended to the name of the
@@ -203,7 +202,8 @@ mark_seen() {
 # We assume it has been marked 'seen', hence always
 # mark_seen before mark_replied.
 mark_replied() {
-    ./mael-parser --add-flag "$selected_path" "$selected_mail" "R"
+    mailbox"$1"
+    ./mael-parser --add-flag "$mailbox/$selected_path" "$selected_mail" "R"
 }
 
 # The email is parsed, tossed into 'less' for viewing.
